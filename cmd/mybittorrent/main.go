@@ -14,7 +14,7 @@ import (
 // - 5:hello -> hello
 // - 10:hello12345 -> hello12345
 func decodeBencode(bencodedString string) (interface{}, error) {
-	if unicode.IsDigit(rune(bencodedString[0])) {
+	if unicode.IsDigit(rune(bencodedString[0])) { // bencodedString[0] returns a byte (which shows up as Unicode when printed)
 		var firstColonIndex int
 
 		for i := 0; i < len(bencodedString); i++ {
@@ -32,6 +32,15 @@ func decodeBencode(bencodedString string) (interface{}, error) {
 		}
 
 		return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], nil
+	} else if bencodedString[0] == 'i' && unicode.IsDigit(rune(bencodedString[1])) && bencodedString[len(bencodedString)-1] == 'e' {
+		numberStr := bencodedString[1 : len(bencodedString)-1]
+
+		number, err := strconv.Atoi(numberStr)
+		if err != nil {
+			return "", err
+		}
+
+		return number, nil
 	} else {
 		return "", fmt.Errorf("Only strings are supported at the moment")
 	}
