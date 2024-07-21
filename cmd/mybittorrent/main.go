@@ -32,7 +32,7 @@ func decodeBencode(bencodedString string) (interface{}, error) {
 		}
 
 		return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], nil
-	} else if bencodedString[0] == 'i' && unicode.IsDigit(rune(bencodedString[1])) && bencodedString[len(bencodedString)-1] == 'e' {
+	} else if bencodedString[0] == 'i' && bencodedString[len(bencodedString)-1] == 'e' {
 		numberStr := bencodedString[1 : len(bencodedString)-1]
 
 		number, err := strconv.Atoi(numberStr)
