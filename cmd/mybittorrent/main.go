@@ -61,6 +61,10 @@ func decodeBencode(bencodedString string) (interface{}, string, error) {
 
 		retLists := make([]interface{}, 0)
 
+		if lists == "" {
+			return retLists, "", nil
+		}
+
 		result, rest, err := decodeBencode(lists)
 
 		if err != nil {
