@@ -12,93 +12,76 @@ import (
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
-// Example:
-// - 5:hello -> hello
-// - 10:hello12345 -> hello12345
-func decodeBencode(bencodedString string) (interface{}, error) {
+func decodeString(bencodedString string) (string, string, error) {
+	var firstColonIndex int
+
+	for i := 0; i < len(bencodedString); i++ {
+		if bencodedString[i] == ':' {
+			firstColonIndex = i
+			break
+		}
+	}
+
+	lengthStr := bencodedString[:firstColonIndex]
+
+	length, err := strconv.Atoi(lengthStr)
+	if err != nil {
+		return "", "", tracerr.Wrap(err)
+	}
+
+	return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], bencodedString[firstColonIndex+1+length:], nil
+}
+
+func decodeInteger(bencodedString string) (int, string, error) {
+	lastIndex := len(bencodedString) - 1
+	for i := 1; i < len(bencodedString); i++ {
+		if bencodedString[i] == 'e' {
+			lastIndex = i
+			break
+		}
+	}
+
+	numberStr := bencodedString[1:lastIndex]
+
+	number, err := strconv.Atoi(numberStr)
+	if err != nil {
+		return -1, "", err
+	}
+
+	return number, bencodedString[lastIndex+1:], nil
+}
+
+func decodeBencode(bencodedString string) (interface{}, string, error) {
 	if unicode.IsDigit(rune(bencodedString[0])) { // bencodedString[0] returns a byte (which shows up as Unicode when printed)
-		var firstColonIndex int
-
-		for i := 0; i < len(bencodedString); i++ {
-			if bencodedString[i] == ':' {
-				firstColonIndex = i
-				break
-			}
-		}
-
-		lengthStr := bencodedString[:firstColonIndex]
-
-		length, err := strconv.Atoi(lengthStr)
-		if err != nil {
-			return "", err
-		}
-
-		return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], nil
-	} else if bencodedString[0] == 'i' && bencodedString[len(bencodedString)-1] == 'e' {
-		numberStr := bencodedString[1 : len(bencodedString)-1]
-
-		number, err := strconv.Atoi(numberStr)
-		if err != nil {
-			return "", err
-		}
-
-		return number, nil
+		return decodeString(bencodedString)
+	} else if bencodedString[0] == 'i' {
+		return decodeInteger(bencodedString)
 	} else if bencodedString[0] == 'l' && bencodedString[len(bencodedString)-1] == 'e' {
-
 		lists := bencodedString[1 : len(bencodedString)-1]
 
 		retLists := make([]interface{}, 0)
 
-		i := 0
-		for i < len(lists) {
-			if unicode.IsDigit(rune(lists[i])) {
-				var firstColonIndex int
+		result, rest, err := decodeBencode(lists)
 
-				for j := i; j < len(lists); j++ {
-					if lists[j] == ':' {
-						firstColonIndex = j
-						break
-					}
-				}
-
-				lengthStr := lists[i:firstColonIndex]
-
-				length, err := strconv.Atoi(lengthStr)
-				if err != nil {
-					return "", tracerr.Wrap(err)
-				}
-
-				retLists = append(retLists, lists[firstColonIndex+1:firstColonIndex+1+length])
-
-				i += firstColonIndex + length
-			} else if lists[i] == 'i' {
-				var lastIndex int
-
-				for j := i; j < len(lists); j++ {
-					if lists[j] == 'e' {
-						lastIndex = j
-						break
-					}
-				}
-
-				numberStr := lists[i+1 : lastIndex]
-
-				number, err := strconv.Atoi(numberStr)
-				if err != nil {
-					return "", err
-				}
-
-				retLists = append(retLists, number)
-
-				i += len(numberStr) + 1
-			}
-
-			i += 1
+		if err != nil {
+			return "", "", tracerr.Wrap(err)
 		}
 
-		return retLists, nil
+		retLists = append(retLists, result)
+		for rest != "" {
+			a, r, err := decodeBencode(rest)
+			retLists = append(retLists, a)
+
+			if err != nil {
+				return "", "", tracerr.Wrap(err)
+			}
+
+			rest = r
+		}
+
+		return retLists, "", nil
 	} else {
-		return "", fmt.Errorf("only strings and integers are supported at the moment")
+		return "", "", fmt.Errorf("only strings and integers are supported at the moment")
 	}
 }
 
@@ -113,7 +96,7 @@ func main() {
 
 		bencodedValue := os.Args[2]
 
-		decoded, err := decodeBencode(bencodedValue)
+		decoded, _, err := decodeBencode(bencodedValue)
 		if err != nil {
 			tracerr.PrintSourceColor(err)
 			// fmt.Println(err)
