@@ -52,9 +52,32 @@ func decodeInteger(bencodedString string) (int, string, error) {
 }
 
 func decodeList(bencodedString string) ([]interface{}, string, error) {
+	fmt.Println("decodeList bencodedString: ", bencodedString)
 	lastIndex := len(bencodedString) - 1
 	startPoint := 1
 	for i := 1; i < len(bencodedString); i++ {
+		if bencodedString[i] == ':' {
+			j := i - 1
+			for j > 1 {
+				if !unicode.IsDigit(rune(bencodedString[j])) {
+					if i == j {
+						return []interface{}{}, "", fmt.Errorf("invalid string syntax")
+					}
+					break
+				}
+				j--
+			}
+
+			length, err := strconv.Atoi(bencodedString[j+1 : i])
+
+			if err != nil {
+				return []interface{}{}, "", tracerr.Wrap(err)
+			}
+
+			i += length
+			continue
+		}
+
 		if bencodedString[i] == 'e' {
 			startPoint -= 1
 		} else if bencodedString[i] == 'l' || bencodedString[i] == 'i' {
@@ -67,11 +90,19 @@ func decodeList(bencodedString string) ([]interface{}, string, error) {
 		}
 	}
 
+	fmt.Println("lastIndex: ", lastIndex)
+	fmt.Println("startPoint: ", startPoint)
+
 	lists := bencodedString[1:lastIndex]
 	rest := bencodedString[lastIndex+1:]
 
+	fmt.Println("lists: ", lists)
+	fmt.Println("rest: ", rest)
+
 	retLists := make([]interface{}, 0)
 	for lists != "" {
+		fmt.Println("inside lists: ", lists)
+
 		a, r, err := decodeBencode(lists)
 
 		if err != nil {
@@ -81,6 +112,8 @@ func decodeList(bencodedString string) ([]interface{}, string, error) {
 
 		lists = r
 	}
+
+	fmt.Println("retLists: ", retLists)
 
 	return retLists, rest, nil
 }
