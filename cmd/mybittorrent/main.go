@@ -51,41 +51,49 @@ func decodeInteger(bencodedString string) (int, string, error) {
 	return number, bencodedString[lastIndex+1:], nil
 }
 
+func decodeList(bencodedString string) ([]interface{}, string, error) {
+	lastIndex := len(bencodedString) - 1
+	startPoint := 1
+	for i := 1; i < len(bencodedString); i++ {
+		if bencodedString[i] == 'e' {
+			startPoint -= 1
+		} else if bencodedString[i] == 'l' || bencodedString[i] == 'i' {
+			startPoint += 1
+		}
+
+		if startPoint == 0 {
+			lastIndex = i
+			break
+		}
+	}
+
+	lists := bencodedString[1:lastIndex]
+	rest := bencodedString[lastIndex+1:]
+
+	retLists := make([]interface{}, 0)
+	for lists != "" {
+		a, r, err := decodeBencode(lists)
+
+		if err != nil {
+			return []interface{}{}, "", tracerr.Wrap(err)
+		}
+		retLists = append(retLists, a)
+
+		lists = r
+	}
+
+	return retLists, rest, nil
+}
+
 func decodeBencode(bencodedString string) (interface{}, string, error) {
 	if unicode.IsDigit(rune(bencodedString[0])) { // bencodedString[0] returns a byte (which shows up as Unicode when printed)
 		return decodeString(bencodedString)
 	} else if bencodedString[0] == 'i' {
 		return decodeInteger(bencodedString)
-	} else if bencodedString[0] == 'l' && bencodedString[len(bencodedString)-1] == 'e' {
-		lists := bencodedString[1 : len(bencodedString)-1]
-
-		retLists := make([]interface{}, 0)
-
-		if lists == "" {
-			return retLists, "", nil
-		}
-
-		result, rest, err := decodeBencode(lists)
-
-		if err != nil {
-			return "", "", tracerr.Wrap(err)
-		}
-
-		retLists = append(retLists, result)
-		for rest != "" {
-			a, r, err := decodeBencode(rest)
-			retLists = append(retLists, a)
-
-			if err != nil {
-				return "", "", tracerr.Wrap(err)
-			}
-
-			rest = r
-		}
-
-		return retLists, "", nil
+	} else if bencodedString[0] == 'l' {
+		return decodeList(bencodedString)
 	} else {
-		return "", "", fmt.Errorf("only strings and integers are supported at the moment")
+		return "", "", fmt.Errorf("invalid syntax")
 	}
 }
 
@@ -100,10 +108,15 @@ func main() {
 
 		bencodedValue := os.Args[2]
 
-		decoded, _, err := decodeBencode(bencodedValue)
+		decoded, rest, err := decodeBencode(bencodedValue)
 		if err != nil {
 			tracerr.PrintSourceColor(err)
 			// fmt.Println(err)
+			return
+		}
+
+		if rest != "" {
+			fmt.Println("Rest is not empty. Invalid syntax")
 			return
 		}
 
