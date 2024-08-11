@@ -4,6 +4,7 @@ import (
 	// Uncomment this line to pass the first stage
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"unicode"
@@ -52,7 +53,7 @@ func decodeInteger(bencodedString string) (int, string, error) {
 }
 
 func decodeList(bencodedString string) ([]interface{}, string, error) {
-	fmt.Println("decodeList bencodedString: ", bencodedString)
+	DebugLog("decodeList bencodedString: ", bencodedString)
 	lastIndex := len(bencodedString) - 1
 	startPoint := 1
 	for i := 1; i < len(bencodedString); i++ {
@@ -90,18 +91,18 @@ func decodeList(bencodedString string) ([]interface{}, string, error) {
 		}
 	}
 
-	fmt.Println("lastIndex: ", lastIndex)
-	fmt.Println("startPoint: ", startPoint)
+	DebugLog("lastIndex: ", lastIndex)
+	DebugLog("startPoint: ", startPoint)
 
 	lists := bencodedString[1:lastIndex]
 	rest := bencodedString[lastIndex+1:]
 
-	fmt.Println("lists: ", lists)
-	fmt.Println("rest: ", rest)
+	DebugLog("lists: ", lists)
+	DebugLog("rest: ", rest)
 
 	retLists := make([]interface{}, 0)
 	for lists != "" {
-		fmt.Println("inside lists: ", lists)
+		DebugLog("inside lists: ", lists)
 
 		a, r, err := decodeBencode(lists)
 
@@ -113,7 +114,7 @@ func decodeList(bencodedString string) ([]interface{}, string, error) {
 		lists = r
 	}
 
-	fmt.Println("retLists: ", retLists)
+	DebugLog("retLists: ", retLists)
 
 	return retLists, rest, nil
 }
@@ -127,6 +128,13 @@ func decodeBencode(bencodedString string) (interface{}, string, error) {
 		return decodeList(bencodedString)
 	} else {
 		return "", "", fmt.Errorf("invalid syntax")
+	}
+}
+
+// Debug logger function
+func DebugLog(title string, message interface{}) {
+	if os.Getenv("DEBUG") == "true" {
+		log.Println("DEBUG:", title, message)
 	}
 }
 
@@ -144,7 +152,6 @@ func main() {
 		decoded, rest, err := decodeBencode(bencodedValue)
 		if err != nil {
 			tracerr.PrintSourceColor(err)
-			// fmt.Println(err)
 			return
 		}
 
