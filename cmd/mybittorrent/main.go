@@ -59,7 +59,7 @@ func decodeList(bencodedString string) ([]interface{}, string, error) {
 	for i := 1; i < len(bencodedString); i++ {
 		if bencodedString[i] == ':' {
 			j := i - 1
-			for j > 1 {
+			for j > 0 {
 				if !unicode.IsDigit(rune(bencodedString[j])) {
 					if i == j {
 						return []interface{}{}, "", fmt.Errorf("invalid string syntax")
@@ -68,6 +68,9 @@ func decodeList(bencodedString string) ([]interface{}, string, error) {
 				}
 				j--
 			}
+
+			DebugLog("j: ", j)
+			DebugLog("i: ", i)
 
 			length, err := strconv.Atoi(bencodedString[j+1 : i])
 
