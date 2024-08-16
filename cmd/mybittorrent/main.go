@@ -13,6 +13,18 @@ import (
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
+type TorrentMetadata struct {
+	Announce string   `json:"announce"`
+	Info     InfoDict `json:"info"`
+}
+
+type InfoDict struct {
+	Length      int64  `json:"length"`
+	Name        string `json:"name"`
+	PieceLength int64  `json:"piece length"`
+	Pieces      string `json:"pieces"`
+}
+
 func decodeString(bencodedString string) (string, string, error) {
 	var firstColonIndex int
 
@@ -55,12 +67,16 @@ func decodeInteger(bencodedString string) (int, string, error) {
 func returnLastIndex(bencodedString string) (int, error) {
 	lastIndex := len(bencodedString) - 1
 	startPoint := 1
+
+	// if there's a chain of strings
+	// previous string might have integer behind it
+	lastStringIndex := 0
 	// this whole for loop is looking for the end `e` of this list and set it on `lastIndex`
 	for i := 1; i < len(bencodedString); i++ {
 		if bencodedString[i] == ':' {
 			// dealing with string
 			j := i - 1
-			for j > 0 {
+			for j > lastStringIndex {
 				if !unicode.IsDigit(rune(bencodedString[j])) {
 					if i == j {
 						return -1, fmt.Errorf("invalid string syntax")
@@ -77,14 +93,17 @@ func returnLastIndex(bencodedString string) (int, error) {
 			}
 
 			i += length
+			lastStringIndex = i
 			continue
 		}
 
-		if bencodedString[i] == 'e' {
+		t := bencodedString[i]
+
+		if t == 'e' {
 			startPoint -= 1
-		} else if bencodedString[i] == 'l' ||
-			bencodedString[i] == 'i' ||
-			bencodedString[i] == 'd' {
+		} else if t == 'l' ||
+			t == 'i' ||
+			t == 'd' {
 			startPoint += 1
 		}
 
@@ -178,14 +197,9 @@ func DebugLog(title string, message interface{}) {
 }
 
 func main() {
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	// fmt.Println("Logs from your program will appear here!")
-
 	command := os.Args[1]
 
 	if command == "decode" {
-		// Uncomment this block to pass the first stage
-
 		bencodedValue := os.Args[2]
 
 		decoded, rest, err := decodeBencode(bencodedValue)
@@ -201,6 +215,44 @@ func main() {
 
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
+	} else if command == "info" {
+		fileName := os.Args[2]
+
+		content, err := os.ReadFile(fileName)
+		if err != nil {
+			fmt.Println("Error reading file:", err)
+			return
+		}
+
+		metadataMap, rest, err := decodeBencode(string(content))
+		if err != nil {
+			tracerr.PrintSourceColor(err)
+			return
+		}
+
+		if rest != "" {
+			fmt.Println("Rest is not empty. Invalid syntax")
+			return
+		}
+
+		// Convert the map to JSON
+		jsonData, err := json.Marshal(metadataMap)
+		if err != nil {
+			fmt.Println("Error marshalling to JSON:", err)
+			return
+		}
+
+		// Unmarshal JSON into our struct
+		var metadata TorrentMetadata
+		err = json.Unmarshal(jsonData, &metadata)
+		if err != nil {
+			fmt.Println("Error unmarshalling JSON:", err)
+			return
+		}
+
+		// Now you can use the struct
+		fmt.Printf("Tracker URL: %s\n", metadata.Announce)
+		fmt.Printf("Length: %d\n", metadata.Info.Length)
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
