@@ -82,7 +82,9 @@ func returnLastIndex(bencodedString string) (int, error) {
 
 		if bencodedString[i] == 'e' {
 			startPoint -= 1
-		} else if bencodedString[i] == 'l' || bencodedString[i] == 'i' {
+		} else if bencodedString[i] == 'l' ||
+			bencodedString[i] == 'i' ||
+			bencodedString[i] == 'd' {
 			startPoint += 1
 		}
 
