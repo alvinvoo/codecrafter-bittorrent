@@ -52,30 +52,28 @@ func decodeInteger(bencodedString string) (int, string, error) {
 	return number, bencodedString[lastIndex+1:], nil
 }
 
-func decodeList(bencodedString string) ([]interface{}, string, error) {
-	DebugLog("decodeList bencodedString: ", bencodedString)
+func returnLastIndex(bencodedString string) (int, error) {
 	lastIndex := len(bencodedString) - 1
 	startPoint := 1
+	// this whole for loop is looking for the end `e` of this list and set it on `lastIndex`
 	for i := 1; i < len(bencodedString); i++ {
 		if bencodedString[i] == ':' {
+			// dealing with string
 			j := i - 1
 			for j > 0 {
 				if !unicode.IsDigit(rune(bencodedString[j])) {
 					if i == j {
-						return []interface{}{}, "", fmt.Errorf("invalid string syntax")
+						return -1, fmt.Errorf("invalid string syntax")
 					}
 					break
 				}
 				j--
 			}
 
-			DebugLog("j: ", j)
-			DebugLog("i: ", i)
-
 			length, err := strconv.Atoi(bencodedString[j+1 : i])
 
 			if err != nil {
-				return []interface{}{}, "", tracerr.Wrap(err)
+				return -1, tracerr.Wrap(err)
 			}
 
 			i += length
@@ -94,19 +92,21 @@ func decodeList(bencodedString string) ([]interface{}, string, error) {
 		}
 	}
 
-	DebugLog("lastIndex: ", lastIndex)
-	DebugLog("startPoint: ", startPoint)
+	return lastIndex, nil
+}
+
+func decodeList(bencodedString string) ([]interface{}, string, error) {
+	lastIndex, err := returnLastIndex(bencodedString)
+
+	if (err != nil) || (lastIndex == -1) {
+		return []interface{}{}, "", fmt.Errorf("invalid list syntax")
+	}
 
 	lists := bencodedString[1:lastIndex]
 	rest := bencodedString[lastIndex+1:]
 
-	DebugLog("lists: ", lists)
-	DebugLog("rest: ", rest)
-
 	retLists := make([]interface{}, 0)
 	for lists != "" {
-		DebugLog("inside lists: ", lists)
-
 		a, r, err := decodeBencode(lists)
 
 		if err != nil {
@@ -117,9 +117,41 @@ func decodeList(bencodedString string) ([]interface{}, string, error) {
 		lists = r
 	}
 
-	DebugLog("retLists: ", retLists)
-
 	return retLists, rest, nil
+}
+
+func decodeDictionary(bencodedString string) (map[string]interface{}, string, error) {
+	lastIndex, err := returnLastIndex(bencodedString)
+
+	if (err != nil) || (lastIndex == -1) {
+		return map[string]interface{}{}, "", fmt.Errorf("invalid dictionary syntax")
+	}
+
+	dict := bencodedString[1:lastIndex]
+	rest := bencodedString[lastIndex+1:]
+
+	retDict := make(map[string]interface{})
+	for dict != "" {
+		// key is always string
+		k, rk, err := decodeString(dict)
+
+		if err != nil {
+			return map[string]interface{}{}, "", tracerr.Wrap(err)
+		}
+
+		// need to decode twice to get key-value pair
+		v, r, err := decodeBencode(rk)
+
+		if err != nil {
+			return map[string]interface{}{}, "", tracerr.Wrap(err)
+		}
+		// need one way to extract out the key and the value
+		retDict[k] = v
+
+		dict = r
+	}
+
+	return retDict, rest, nil
 }
 
 func decodeBencode(bencodedString string) (interface{}, string, error) {
@@ -129,6 +161,8 @@ func decodeBencode(bencodedString string) (interface{}, string, error) {
 		return decodeInteger(bencodedString)
 	} else if bencodedString[0] == 'l' {
 		return decodeList(bencodedString)
+	} else if bencodedString[0] == 'd' {
+		return decodeDictionary(bencodedString)
 	} else {
 		return "", "", fmt.Errorf("invalid syntax")
 	}
