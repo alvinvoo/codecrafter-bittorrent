@@ -15,18 +15,18 @@ import (
 )
 
 type TorrentMetadata struct {
-	Announce []byte   `json:"announce"`
+	Announce string   `json:"announce"`
 	Info     InfoDict `json:"info"`
 }
 
 type InfoDict struct {
-	Length      int64  `json:"length"`
-	Name        []byte `json:"name"`
-	PieceLength int64  `json:"piece length"`
+	Length      int    `json:"length"`
+	Name        string `json:"name"`
+	PieceLength int    `json:"piece length"`
 	Pieces      []byte `json:"pieces"`
 }
 
-func decodeString(bencodedString string) ([]byte, string, error) {
+func decodeString(bencodedString string) (string, string, error) {
 	var firstColonIndex int
 
 	for i := 0; i < len(bencodedString); i++ {
@@ -40,10 +40,10 @@ func decodeString(bencodedString string) ([]byte, string, error) {
 
 	length, err := strconv.Atoi(lengthStr)
 	if err != nil {
-		return nil, "", tracerr.Wrap(err)
+		return "", "", tracerr.Wrap(err)
 	}
 
-	return []byte(bencodedString[firstColonIndex+1 : firstColonIndex+1+length]), bencodedString[firstColonIndex+1+length:], nil
+	return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], bencodedString[firstColonIndex+1+length:], nil
 }
 
 func decodeInteger(bencodedString string) (int, string, error) {
@@ -192,7 +192,7 @@ func decodeBencode(bencodedString string) (interface{}, string, error) {
 
 func encodeInfoDict(info InfoDict) string {
 	return fmt.Sprintf("d6:lengthi%de4:name%d:%s12:piece lengthi%de6:pieces%d:%se",
-		info.Length, len(info.Name), info.Name, info.PieceLength, len([]byte(info.Pieces)), info.Pieces)
+		info.Length, len(info.Name), info.Name, info.PieceLength, len(info.Pieces), info.Pieces)
 }
 
 func generateSHA1Checksum(data string) string {

@@ -49,25 +49,40 @@ func main() {
 			return
 		}
 
-		// Convert the map to JSON
-		jsonData, err := json.Marshal(metadataMap)
-		if err != nil {
-			fmt.Println("Error marshalling to JSON:", err)
+		// Type assertion to convert interface{} to map[string]interface{}
+		decodedMap, ok := metadataMap.(map[string]interface{})
+		if !ok {
+			fmt.Println("Failed to type assert metaMap to map[string]interface{}")
 			return
 		}
 
-		// Unmarshal JSON into our struct
-		var metadata TorrentMetadata
-		err = json.Unmarshal(jsonData, &metadata)
-		if err != nil {
-			fmt.Println("Error unmarshalling JSON:", err)
-			return
+		// Convert the decoded map to the TorrentMetadata struct
+		var torrent TorrentMetadata
+		if announce, ok := decodedMap["announce"].(string); ok {
+			torrent.Announce = announce
+		}
+
+		if infoMap, ok := decodedMap["info"].(map[string]interface{}); ok {
+			var info InfoDict
+			if length, ok := infoMap["length"].(int); ok {
+				info.Length = length
+			}
+			if name, ok := infoMap["name"].(string); ok {
+				info.Name = name
+			}
+			if pieceLength, ok := infoMap["piece length"].(int); ok {
+				info.PieceLength = pieceLength
+			}
+			if pieces, ok := infoMap["pieces"].(string); ok {
+				info.Pieces = []byte(pieces) // pieces are non-UTF-8 bytes
+			}
+			torrent.Info = info
 		}
 
 		// Now you can use the struct
-		fmt.Printf("Tracker URL: %s\n", metadata.Announce)
-		fmt.Printf("Length: %d\n", metadata.Info.Length)
-		fmt.Printf("Info Hash: %s\n", calculateInfoHash(metadata))
+		fmt.Printf("Tracker URL: %s\n", torrent.Announce)
+		fmt.Printf("Length: %d\n", torrent.Info.Length)
+		fmt.Printf("Info Hash: %s\n", calculateInfoHash(torrent))
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
