@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/ztrue/tracerr"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
@@ -26,7 +27,7 @@ type InfoDict struct {
 	Pieces      []byte `json:"pieces"`
 }
 
-func decodeString(bencodedString string) (string, string, error) {
+func decodeString(bencodedString []byte) ([]byte, []byte, error) {
 	var firstColonIndex int
 
 	for i := 0; i < len(bencodedString); i++ {
@@ -38,15 +39,15 @@ func decodeString(bencodedString string) (string, string, error) {
 
 	lengthStr := bencodedString[:firstColonIndex]
 
-	length, err := strconv.Atoi(lengthStr)
+	length, err := strconv.Atoi(string(lengthStr))
 	if err != nil {
-		return "", "", tracerr.Wrap(err)
+		return nil, nil, tracerr.Wrap(err)
 	}
 
 	return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], bencodedString[firstColonIndex+1+length:], nil
 }
 
-func decodeInteger(bencodedString string) (int, string, error) {
+func decodeInteger(bencodedString []byte) (int, []byte, error) {
 	lastIndex := len(bencodedString) - 1
 	for i := 1; i < len(bencodedString); i++ {
 		if bencodedString[i] == 'e' {
@@ -57,15 +58,15 @@ func decodeInteger(bencodedString string) (int, string, error) {
 
 	numberStr := bencodedString[1:lastIndex]
 
-	number, err := strconv.Atoi(numberStr)
+	number, err := strconv.Atoi(string(numberStr))
 	if err != nil {
-		return -1, "", err
+		return -1, nil, err
 	}
 
 	return number, bencodedString[lastIndex+1:], nil
 }
 
-func returnLastIndex(bencodedString string) (int, error) {
+func returnLastIndex(bencodedString []byte) (int, error) {
 	lastIndex := len(bencodedString) - 1
 	startPoint := 1
 
@@ -87,7 +88,7 @@ func returnLastIndex(bencodedString string) (int, error) {
 				j--
 			}
 
-			length, err := strconv.Atoi(bencodedString[j+1 : i])
+			length, err := strconv.Atoi(string(bencodedString[j+1 : i]))
 
 			if err != nil {
 				return -1, tracerr.Wrap(err)
@@ -117,22 +118,22 @@ func returnLastIndex(bencodedString string) (int, error) {
 	return lastIndex, nil
 }
 
-func decodeList(bencodedString string) ([]interface{}, string, error) {
+func decodeList(bencodedString []byte) ([]interface{}, []byte, error) {
 	lastIndex, err := returnLastIndex(bencodedString)
 
 	if (err != nil) || (lastIndex == -1) {
-		return []interface{}{}, "", fmt.Errorf("invalid list syntax")
+		return []interface{}{}, nil, fmt.Errorf("invalid list syntax")
 	}
 
 	lists := bencodedString[1:lastIndex]
 	rest := bencodedString[lastIndex+1:]
 
 	retLists := make([]interface{}, 0)
-	for lists != "" {
+	for len(lists) > 0 {
 		a, r, err := decodeBencode(lists)
 
 		if err != nil {
-			return []interface{}{}, "", tracerr.Wrap(err)
+			return []interface{}{}, nil, tracerr.Wrap(err)
 		}
 		retLists = append(retLists, a)
 
@@ -142,30 +143,30 @@ func decodeList(bencodedString string) ([]interface{}, string, error) {
 	return retLists, rest, nil
 }
 
-func decodeDictionary(bencodedString string) (map[string]interface{}, string, error) {
+func decodeDictionary(bencodedString []byte) (map[string]interface{}, []byte, error) {
 	lastIndex, err := returnLastIndex(bencodedString)
 
 	if (err != nil) || (lastIndex == -1) {
-		return map[string]interface{}{}, "", fmt.Errorf("invalid dictionary syntax")
+		return map[string]interface{}{}, nil, fmt.Errorf("invalid dictionary syntax")
 	}
 
 	dict := bencodedString[1:lastIndex]
 	rest := bencodedString[lastIndex+1:]
 
 	retDict := make(map[string]interface{})
-	for dict != "" {
+	for len(dict) > 0 {
 		// key is always string
 		k, rk, err := decodeString(dict)
 
 		if err != nil {
-			return map[string]interface{}{}, "", tracerr.Wrap(err)
+			return map[string]interface{}{}, nil, tracerr.Wrap(err)
 		}
 
 		// need to decode twice to get key-value pair
 		v, r, err := decodeBencode(rk)
 
 		if err != nil {
-			return map[string]interface{}{}, "", tracerr.Wrap(err)
+			return map[string]interface{}{}, nil, tracerr.Wrap(err)
 		}
 		// need one way to extract out the key and the value
 		retDict[string(k)] = v
@@ -176,9 +177,13 @@ func decodeDictionary(bencodedString string) (map[string]interface{}, string, er
 	return retDict, rest, nil
 }
 
-func decodeBencode(bencodedString string) (interface{}, string, error) {
+func decodeBencode(bencodedString []byte) (interface{}, []byte, error) {
 	if unicode.IsDigit(rune(bencodedString[0])) { // bencodedString[0] returns a byte (which shows up as Unicode when printed)
-		return decodeString(bencodedString)
+		s, r, err := decodeString(bencodedString)
+		if utf8.Valid(s) {
+			return string(s), r, err
+		}
+		return s, r, err
 	} else if bencodedString[0] == 'i' {
 		return decodeInteger(bencodedString)
 	} else if bencodedString[0] == 'l' {
@@ -186,7 +191,7 @@ func decodeBencode(bencodedString string) (interface{}, string, error) {
 	} else if bencodedString[0] == 'd' {
 		return decodeDictionary(bencodedString)
 	} else {
-		return "", "", fmt.Errorf("invalid syntax")
+		return nil, nil, fmt.Errorf("invalid syntax")
 	}
 }
 

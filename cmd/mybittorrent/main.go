@@ -19,13 +19,13 @@ func decodeFile(fileName string) (TorrentMetadata, error) {
 		return TorrentMetadata{}, tracerr.Wrap(err)
 	}
 
-	metadataMap, rest, err := decodeBencode(string(content))
+	metadataMap, rest, err := decodeBencode(content)
 	if err != nil {
 		fmt.Println("decodeBencode error:", err)
 		return TorrentMetadata{}, tracerr.Wrap(err)
 	}
 
-	if rest != "" {
+	if len(rest) != 0 {
 		fmt.Println("Rest is not empty. Invalid syntax")
 		return TorrentMetadata{}, tracerr.Wrap(err)
 	}
@@ -40,7 +40,7 @@ func decodeFile(fileName string) (TorrentMetadata, error) {
 	// Convert the decoded map to the TorrentMetadata struct
 	var torrent TorrentMetadata
 	if announce, ok := decodedMap["announce"].(string); ok {
-		torrent.Announce = announce
+		torrent.Announce = string(announce)
 	}
 
 	if infoMap, ok := decodedMap["info"].(map[string]interface{}); ok {
@@ -49,13 +49,13 @@ func decodeFile(fileName string) (TorrentMetadata, error) {
 			info.Length = length
 		}
 		if name, ok := infoMap["name"].(string); ok {
-			info.Name = name
+			info.Name = string(name)
 		}
 		if pieceLength, ok := infoMap["piece length"].(int); ok {
 			info.PieceLength = pieceLength
 		}
-		if pieces, ok := infoMap["pieces"].(string); ok {
-			info.Pieces = []byte(pieces) // pieces are non-UTF-8 bytes
+		if pieces, ok := infoMap["pieces"].([]byte); ok {
+			info.Pieces = pieces // pieces are non-UTF-8 bytes
 		}
 		torrent.Info = info
 	}
@@ -69,13 +69,13 @@ func main() {
 	if command == "decode" {
 		bencodedValue := os.Args[2]
 
-		decoded, rest, err := decodeBencode(bencodedValue)
+		decoded, rest, err := decodeBencode([]byte(bencodedValue))
 		if err != nil {
 			tracerr.PrintSourceColor(err)
 			return
 		}
 
-		if rest != "" {
+		if len(rest) != 0 {
 			fmt.Println("Rest is not empty. Invalid syntax")
 			return
 		}
