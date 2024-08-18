@@ -83,6 +83,13 @@ func main() {
 		fmt.Printf("Tracker URL: %s\n", torrent.Announce)
 		fmt.Printf("Length: %d\n", torrent.Info.Length)
 		fmt.Printf("Info Hash: %s\n", calculateInfoHash(torrent))
+		fmt.Printf("Piece Length: %d\n", torrent.Info.PieceLength)
+		fmt.Printf("Piece Hashes:\n")
+		pieces := splitPiecesIntoHashes(torrent.Info.Pieces)
+		for p := range pieces {
+			fmt.Printf("%s\n", pieces[p])
+		}
+
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
