@@ -15,18 +15,6 @@ import (
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
-type TorrentMetadata struct {
-	Announce string   `json:"announce"`
-	Info     InfoDict `json:"info"`
-}
-
-type InfoDict struct {
-	Length      int    `json:"length"`
-	Name        string `json:"name"`
-	PieceLength int    `json:"piece length"`
-	Pieces      []byte `json:"pieces"`
-}
-
 func decodeString(bencodedString []byte) ([]byte, []byte, error) {
 	var firstColonIndex int
 

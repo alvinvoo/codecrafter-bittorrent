@@ -33,7 +33,7 @@ func decodeFile(fileName string) (TorrentMetadata, error) {
 	// Type assertion to convert interface{} to map[string]interface{}
 	decodedMap, ok := metadataMap.(map[string]interface{})
 	if !ok {
-		fmt.Println("Failed to type assert metaMap to map[string]interface{}")
+		fmt.Println("Failed to type assert metadataMap to map[string]interface{}")
 		return TorrentMetadata{}, tracerr.Wrap(err)
 	}
 
@@ -98,8 +98,8 @@ func main() {
 		fmt.Printf("Piece Length: %d\n", torrent.Info.PieceLength)
 		fmt.Printf("Piece Hashes:\n")
 		pieces := splitPiecesIntoHashes(torrent.Info.Pieces)
-		for p := range pieces {
-			fmt.Printf("%s\n", pieces[p])
+		for _, p := range pieces {
+			fmt.Printf("%s\n", p)
 		}
 	} else if command == "peers" {
 		fileName := os.Args[2]
@@ -126,9 +126,50 @@ func main() {
 			fmt.Println("Error reading response body:", err)
 		}
 
-		fmt.Println(body)
+		DebugLog("Response body: ", body)
+		peersRespMap, rest, err := decodeBencode(body)
+		if err != nil {
+			tracerr.PrintSourceColor(err)
+			return
+		}
 
-		// TODO: convert bencodeString finally to process []byte
+		if len(rest) != 0 {
+			fmt.Println("Rest is not empty. Invalid syntax")
+			return
+		}
+
+		DebugLog("Response map", peersRespMap)
+
+		var peersResp PeerResponse
+		// Type assertion to convert interface{} to map[string]interface{}
+		if decodedMap, ok := peersRespMap.(map[string]interface{}); ok {
+			if complete, ok := decodedMap["complete"].(int); ok {
+				peersResp.Complete = complete
+			}
+			if incomplete, ok := decodedMap["incomplete"].(int); ok {
+				peersResp.Incomplete = incomplete
+			}
+			if interval, ok := decodedMap["interval"].(int); ok {
+				peersResp.Interval = interval
+			}
+			if minInterval, ok := decodedMap["min interval"].(int); ok {
+				peersResp.MinInterval = minInterval
+			}
+			if peers, ok := decodedMap["peers"].([]byte); ok {
+				peersResp.Peers = peers
+			}
+		}
+
+		peersList, err := decodePeers(peersResp.Peers)
+		if err != nil {
+			tracerr.PrintSourceColor(err)
+			return
+		}
+
+		for _, p := range peersList {
+			fmt.Println(p)
+		}
+
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
