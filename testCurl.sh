@@ -1,0 +1,1 @@
+curl "http://bittorrent-test-tracker.codecrafters.io/announce?info_hash=%D6%9F%91%E6%B2%AELT%24h%D1%07%3Aq%D4%EA%13%87%9A%7F&peer_id=ALVINVOOALVINVOO1234&port=6881&uploaded=0&downloaded=0&left=92063&compact=1"
