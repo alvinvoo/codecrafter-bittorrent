@@ -169,7 +169,20 @@ func main() {
 		for _, p := range peersList {
 			fmt.Println(p)
 		}
+	} else if command == "handshake" {
+		fileName := os.Args[2]
 
+		torrent, err := decodeFile(fileName)
+		if err != nil {
+			tracerr.PrintSourceColor(err)
+			return
+		}
+
+		peerIpPort := os.Args[3]
+
+		response := sendTCPHandshake(peerIpPort, torrent)
+
+		fmt.Printf("Peer ID: %x\n", response)
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
