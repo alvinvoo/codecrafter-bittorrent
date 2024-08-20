@@ -181,8 +181,9 @@ func main() {
 		peerIpPort := os.Args[3]
 
 		response := sendTCPHandshake(peerIpPort, torrent)
+		peerId := destructureHandshakeResponse(response)
 
-		fmt.Printf("Peer ID: %x\n", response)
+		fmt.Printf("Peer ID: %x\n", peerId)
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)

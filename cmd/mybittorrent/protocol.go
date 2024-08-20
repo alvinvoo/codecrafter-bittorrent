@@ -51,5 +51,15 @@ func sendTCPHandshake(peerIpPort string, metadata TorrentMetadata) []byte {
 		fmt.Println("Error receiving handshake response:", err)
 	}
 
-	return response[:n]
+	// response will contain the entire protocol message
+	// peer id is the last 20 bytes
+	r := response[:n]
+	return r
+}
+
+func destructureHandshakeResponse(response []byte) string {
+	// Extract the peer id from the response
+	peerId := string(response[len(response)-20:])
+
+	return peerId
 }
