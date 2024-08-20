@@ -58,6 +58,8 @@ func sendTCPHandshake(peerIpPort string, metadata TorrentMetadata) []byte {
 }
 
 func destructureHandshakeResponse(response []byte) string {
+	// response received is actually 74 bytes, different from the 68 bytes in the protocol
+
 	// Extract the peer id from the response
 	peerId := string(response[len(response)-20:])
 
