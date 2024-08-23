@@ -4,9 +4,8 @@ import (
 	// Uncomment this line to pass the first stage
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/ztrue/tracerr"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
@@ -110,57 +109,7 @@ func main() {
 			return
 		}
 
-		infoHash := calculateInfoHash(torrent)
-
-		url := fmt.Sprintf("%s?info_hash=%s&peer_id=%s&port=%d&uploaded=0&downloaded=0&left=92063&compact=1",
-			torrent.Announce, urlEncodeWithConversion(infoHash), "ALVINVOOALVINVOO1234", 6881)
-
-		response, err := http.Get(url)
-		if err != nil {
-			fmt.Println("Error getting peers:", err)
-			return
-		}
-		defer response.Body.Close()
-		body, err := io.ReadAll(response.Body)
-		if err != nil {
-			fmt.Println("Error reading response body:", err)
-		}
-
-		DebugLog("Response body: ", body)
-		peersRespMap, rest, err := decodeBencode(body)
-		if err != nil {
-			tracerr.PrintSourceColor(err)
-			return
-		}
-
-		if len(rest) != 0 {
-			fmt.Println("Rest is not empty. Invalid syntax")
-			return
-		}
-
-		DebugLog("Response map", peersRespMap)
-
-		var peersResp PeerResponse
-		// Type assertion to convert interface{} to map[string]interface{}
-		if decodedMap, ok := peersRespMap.(map[string]interface{}); ok {
-			if complete, ok := decodedMap["complete"].(int); ok {
-				peersResp.Complete = complete
-			}
-			if incomplete, ok := decodedMap["incomplete"].(int); ok {
-				peersResp.Incomplete = incomplete
-			}
-			if interval, ok := decodedMap["interval"].(int); ok {
-				peersResp.Interval = interval
-			}
-			if minInterval, ok := decodedMap["min interval"].(int); ok {
-				peersResp.MinInterval = minInterval
-			}
-			if peers, ok := decodedMap["peers"].([]byte); ok {
-				peersResp.Peers = peers
-			}
-		}
-
-		peersList, err := decodePeers(peersResp.Peers)
+		peersList, err := getPeers(torrent)
 		if err != nil {
 			tracerr.PrintSourceColor(err)
 			return
@@ -180,10 +129,72 @@ func main() {
 
 		peerIpPort := os.Args[3]
 
-		response := sendTCPHandshake(peerIpPort, torrent)
-		peerId := destructureHandshakeResponse(response)
+		conn := establistTCPConnection(peerIpPort)
+		defer conn.Close()
 
-		fmt.Printf("Peer ID: %x\n", peerId)
+		response, _ := sendTCPHandshake(conn, torrent)
+		handshake := destructureHandshakeResponse(response)
+
+		fmt.Printf("Peer ID: %x\n", string(handshake.peerId))
+	} else if command == "download_piece" {
+		option := os.Args[2]
+		if option == "-o" && len(os.Args) == 6 {
+			filePath := os.Args[3]
+			fileName := os.Args[4]
+			pieceIndexToDownload, err := strconv.Atoi(os.Args[5])
+			if err != nil {
+				fmt.Println("Invalid piece index")
+				return
+			}
+
+			torrent, err := decodeFile(fileName)
+			if err != nil {
+				tracerr.PrintSourceColor(err)
+				return
+			}
+
+			pieces := splitPiecesIntoHashes(torrent.Info.Pieces)
+			if (pieceIndexToDownload >= len(pieces)) || (pieceIndexToDownload < 0) {
+				fmt.Println("Invalid piece index")
+				return
+			}
+
+			peersList, err := getPeers(torrent)
+			if err != nil {
+				tracerr.PrintSourceColor(err)
+				return
+			}
+
+			// just use the first peer, since there's no specification
+			conn := establistTCPConnection(peersList[0])
+			defer conn.Close()
+
+			response, conn := sendTCPHandshake(conn, torrent)
+			if (response == nil) || len(response) == 0 || (conn == nil) {
+				fmt.Println("Error sending handshake")
+				return
+			}
+			data := downloadPiece(conn, torrent, pieceIndexToDownload)
+
+			file, err := os.Create(filePath)
+			if err != nil {
+				fmt.Println("Error creating file:", err)
+				return
+			}
+			defer file.Close()
+
+			_, err = file.Write(data)
+			if err != nil {
+				fmt.Println("Error writing to file:", err)
+				return
+			}
+
+			fmt.Printf("Piece downloaded to %s.\n", filePath)
+			return
+		} else {
+			fmt.Println("Invalid command. Usage: download_file -o <file_path> <torrent_file> <piece_index>")
+			return
+		}
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)

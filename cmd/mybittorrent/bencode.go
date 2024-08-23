@@ -202,13 +202,14 @@ func calculateInfoHash(metadata TorrentMetadata) string {
 func splitPiecesIntoHashes(pieces []byte) []string {
 	hashes := make([]string, 0)
 	for i := 0; i < len(pieces); i += 20 {
+		// the `pieces` here are more accurately called `piece hashes`
 		hashes = append(hashes, hex.EncodeToString(pieces[i:i+20]))
 	}
 	return hashes
 }
 
 // Debug logger function
-func DebugLog(title string, message interface{}) {
+func DebugLog(title string, message ...interface{}) {
 	if os.Getenv("DEBUG") == "true" {
 		log.Println("DEBUG:", title, message)
 	}
