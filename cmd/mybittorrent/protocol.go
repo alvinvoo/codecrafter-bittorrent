@@ -78,7 +78,7 @@ func destructureHandshakeResponse(response []byte) Handshake {
 	}
 }
 
-func establistTCPConnection(peerIpPort string) net.Conn {
+func establishTCPConnection(peerIpPort string) net.Conn {
 	// Establish a TCP connection
 	conn, err := net.Dial("tcp", peerIpPort)
 	if err != nil {
@@ -98,7 +98,6 @@ func sendTCPHandshake(conn net.Conn, metadata TorrentMetadata) ([]byte, net.Conn
 
 	a, err := conn.Write(handshakeMessage)
 	DebugLog("handshake message sent length: ", a)
-	fmt.Printf("handshake message sent: %v\n", handshakeMessage)
 	if err != nil {
 		fmt.Println("Error sending handshake:", err)
 	}
@@ -141,13 +140,7 @@ func getMsgFromConn(conn net.Conn) (byte, []byte) {
 	return id, content
 }
 
-func downloadPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byte {
-	// first check pieceIndex validity
-	if pieceIndex > (torrent.Info.Length/torrent.Info.PieceLength) || (pieceIndex < 0) {
-		fmt.Println("Invalid piece index")
-		return nil
-	}
-
+func downloadInit(conn net.Conn) net.Conn {
 	// wait for the first message from the peer
 	id, _ := getMsgFromConn(conn)
 	if id != 5 {
@@ -163,6 +156,7 @@ func downloadPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byt
 	_, err := conn.Write(interestedMessage)
 	if err != nil {
 		fmt.Println("Error sending interested message:", err)
+		return nil
 	}
 
 	DebugLog("Sent interested message")
@@ -173,6 +167,10 @@ func downloadPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byt
 		return nil
 	}
 
+	return conn
+}
+
+func requestPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byte {
 	var pieceLengthToRetrive int
 	if (pieceIndex == torrent.Info.Length/torrent.Info.PieceLength) && (torrent.Info.Length%torrent.Info.PieceLength != 0) {
 		// last piece
@@ -214,6 +212,37 @@ func downloadPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byt
 
 		// write the piece to the file
 		data = append(data, content[8:]...) // first 8 bytes are index and begin; probably better to check
+	}
+
+	return data
+}
+
+func downloadPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byte {
+	// first check pieceIndex validity
+	if pieceIndex > (torrent.Info.Length/torrent.Info.PieceLength) || (pieceIndex < 0) {
+		fmt.Println("Invalid piece index")
+		return nil
+	}
+
+	conn = downloadInit(conn)
+
+	return requestPiece(conn, torrent, pieceIndex)
+}
+
+func download(conn net.Conn, torrent TorrentMetadata) []byte {
+	piecesHash := splitPiecesIntoHashes(torrent.Info.Pieces)
+
+	data := make([]byte, torrent.Info.Length)
+
+	conn = downloadInit(conn)
+	for i := 0; i < len(piecesHash); i++ {
+		piece := requestPiece(conn, torrent, i)
+		if generateSHA1Checksum(piece) != piecesHash[i] {
+			fmt.Printf("Sha1 Checksum for Piece %d does not match\n", i)
+			return nil
+		}
+
+		data = append(data, piece...)
 	}
 
 	return data

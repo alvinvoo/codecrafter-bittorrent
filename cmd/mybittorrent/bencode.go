@@ -188,15 +188,15 @@ func encodeInfoDict(info InfoDict) string {
 		info.Length, len(info.Name), info.Name, info.PieceLength, len(info.Pieces), info.Pieces)
 }
 
-func generateSHA1Checksum(data string) string {
+func generateSHA1Checksum(data []byte) string {
 	h := sha1.New()
-	h.Write([]byte(data))
+	h.Write(data)
 	return hex.EncodeToString(h.Sum(nil))
 }
 
 func calculateInfoHash(metadata TorrentMetadata) string {
 	encodedInfoDict := encodeInfoDict(metadata.Info)
-	return generateSHA1Checksum(encodedInfoDict)
+	return generateSHA1Checksum([]byte(encodedInfoDict))
 }
 
 func splitPiecesIntoHashes(pieces []byte) []string {

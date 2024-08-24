@@ -129,7 +129,7 @@ func main() {
 
 		peerIpPort := os.Args[3]
 
-		conn := establistTCPConnection(peerIpPort)
+		conn := establishTCPConnection(peerIpPort)
 		defer conn.Close()
 
 		response, _ := sendTCPHandshake(conn, torrent)
@@ -166,7 +166,7 @@ func main() {
 			}
 
 			// just use the first peer, since there's no specification
-			conn := establistTCPConnection(peersList[0])
+			conn := establishTCPConnection(peersList[0])
 			defer conn.Close()
 
 			response, conn := sendTCPHandshake(conn, torrent)
@@ -175,6 +175,10 @@ func main() {
 				return
 			}
 			data := downloadPiece(conn, torrent, pieceIndexToDownload)
+			if generateSHA1Checksum(data) != pieces[pieceIndexToDownload] {
+				fmt.Printf("Sha1 Checksum for Piece %d does not match\n", pieceIndexToDownload)
+				return
+			}
 
 			file, err := os.Create(filePath)
 			if err != nil {
@@ -193,6 +197,59 @@ func main() {
 			return
 		} else {
 			fmt.Println("Invalid command. Usage: download_file -o <file_path> <torrent_file> <piece_index>")
+			return
+		}
+	} else if command == "download" {
+		option := os.Args[2]
+		if option == "-o" && len(os.Args) == 5 {
+			filePath := os.Args[3]
+			fileName := os.Args[4]
+
+			torrent, err := decodeFile(fileName)
+			if err != nil {
+				tracerr.PrintSourceColor(err)
+				return
+			}
+
+			peersList, err := getPeers(torrent)
+			if err != nil {
+				tracerr.PrintSourceColor(err)
+				return
+			}
+
+			// just use the first peer, since there's no specification
+			conn := establishTCPConnection(peersList[0])
+			defer conn.Close()
+
+			response, conn := sendTCPHandshake(conn, torrent)
+			if (response == nil) || len(response) == 0 || (conn == nil) {
+				fmt.Println("Error sending handshake")
+				return
+			}
+
+			data := download(conn, torrent)
+			if (data == nil) || (len(data) == 0) {
+				fmt.Println("Error downloading data")
+				return
+			}
+
+			file, err := os.Create(filePath)
+			if err != nil {
+				fmt.Println("Error creating file:", err)
+				return
+			}
+			defer file.Close()
+
+			_, err = file.Write(data)
+			if err != nil {
+				fmt.Println("Error writing to file:", err)
+				return
+			}
+
+			fmt.Printf("Downloaded %s to %s.\n", fileName, filePath)
+			return
+		} else {
+			fmt.Println("Invalid command. Usage: download -o <file_path> <torrent_file>")
 			return
 		}
 	} else {
