@@ -232,7 +232,7 @@ func downloadPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byt
 func download(conn net.Conn, torrent TorrentMetadata) []byte {
 	piecesHash := splitPiecesIntoHashes(torrent.Info.Pieces)
 
-	data := make([]byte, torrent.Info.Length)
+	data := make([]byte, 0)
 
 	conn = downloadInit(conn)
 	for i := 0; i < len(piecesHash); i++ {
