@@ -1,35 +1,16 @@
-package main
+package protocol
 
 import (
-	"crypto/sha1"
 	"encoding/binary"
+	"net"
 )
-
-type TorrentMetadata struct {
-	Announce string   `json:"announce"`
-	Info     InfoDict `json:"info"`
-}
-
-type InfoDict struct {
-	Length      int    `json:"length"`
-	Name        string `json:"name"`
-	PieceLength int    `json:"piece length"`
-	Pieces      []byte `json:"pieces"`
-}
-
-func (info InfoDict) hash() []byte {
-	encodeInfoDict := encodeInfoDict(info)
-	h := sha1.New()
-	h.Write([]byte(encodeInfoDict))
-	return h.Sum(nil)
-}
 
 type Handshake struct {
 	length   byte
 	protocol string
 	resv     [8]byte
 	info     []byte
-	peerId   []byte
+	PeerId   []byte
 }
 
 func (handshake Handshake) encode() []byte {
@@ -38,7 +19,7 @@ func (handshake Handshake) encode() []byte {
 	msg = append(msg, handshake.protocol...)
 	msg = append(msg, handshake.resv[:]...)
 	msg = append(msg, handshake.info...)
-	msg = append(msg, handshake.peerId...)
+	msg = append(msg, handshake.PeerId...)
 	return msg
 }
 
@@ -65,4 +46,10 @@ func (peerMessage PeerMessage) encode() []byte {
 	msg = append(msg, lengthBytes...)
 	msg = append(msg, peerMessage.Id)
 	return msg
+}
+
+type Peer struct {
+	Conn  *net.TCPConn // need to close at the end
+	Id    string
+	Retry int
 }

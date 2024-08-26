@@ -2,64 +2,72 @@ package main
 
 import (
 	// Uncomment this line to pass the first stage
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 
 	"github.com/ztrue/tracerr"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bencode"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/protocol"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/torrent"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/util"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/worker"
 )
 
-func decodeFile(fileName string) (TorrentMetadata, error) {
+func decodeFile(fileName string) (torrent.TorrentMetadata, error) {
 	content, err := os.ReadFile(fileName)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
-		return TorrentMetadata{}, tracerr.Wrap(err)
+		return torrent.TorrentMetadata{}, tracerr.Wrap(err)
 	}
 
-	metadataMap, rest, err := decodeBencode(content)
+	metadataMap, rest, err := bencode.DecodeBencode(content)
 	if err != nil {
-		fmt.Println("decodeBencode error:", err)
-		return TorrentMetadata{}, tracerr.Wrap(err)
+		fmt.Println("bencode.DecodeBencode error:", err)
+		return torrent.TorrentMetadata{}, tracerr.Wrap(err)
 	}
 
 	if len(rest) != 0 {
 		fmt.Println("Rest is not empty. Invalid syntax")
-		return TorrentMetadata{}, tracerr.Wrap(err)
+		return torrent.TorrentMetadata{}, tracerr.Wrap(err)
 	}
 
 	// Type assertion to convert interface{} to map[string]interface{}
 	decodedMap, ok := metadataMap.(map[string]interface{})
 	if !ok {
 		fmt.Println("Failed to type assert metadataMap to map[string]interface{}")
-		return TorrentMetadata{}, tracerr.Wrap(err)
+		return torrent.TorrentMetadata{}, tracerr.Wrap(err)
 	}
 
-	// Convert the decoded map to the TorrentMetadata struct
-	var torrent TorrentMetadata
+	// Convert the decoded map to the torrentMetadata.TorrentMetadata struct
+	var torrentMetadata torrent.TorrentMetadata
 	if announce, ok := decodedMap["announce"].(string); ok {
-		torrent.Announce = string(announce)
+		torrentMetadata.Announce = string(announce)
 	}
 
 	if infoMap, ok := decodedMap["info"].(map[string]interface{}); ok {
-		var info InfoDict
+		var infoDict torrent.InfoDict
 		if length, ok := infoMap["length"].(int); ok {
-			info.Length = length
+			infoDict.Length = length
 		}
 		if name, ok := infoMap["name"].(string); ok {
-			info.Name = string(name)
+			infoDict.Name = string(name)
 		}
 		if pieceLength, ok := infoMap["piece length"].(int); ok {
-			info.PieceLength = pieceLength
+			infoDict.PieceLength = pieceLength
 		}
 		if pieces, ok := infoMap["pieces"].([]byte); ok {
-			info.Pieces = pieces // pieces are non-UTF-8 bytes
+			infoDict.Pieces = pieces // pieces are non-UTF-8 bytes
 		}
-		torrent.Info = info
+		torrentMetadata.Info = infoDict
 	}
 
-	return torrent, nil
+	return torrentMetadata, nil
 }
 
 func main() {
@@ -68,7 +76,7 @@ func main() {
 	if command == "decode" {
 		bencodedValue := os.Args[2]
 
-		decoded, rest, err := decodeBencode([]byte(bencodedValue))
+		decoded, rest, err := bencode.DecodeBencode([]byte(bencodedValue))
 		if err != nil {
 			tracerr.PrintSourceColor(err)
 			return
@@ -93,10 +101,10 @@ func main() {
 		// Now you can use the struct
 		fmt.Printf("Tracker URL: %s\n", torrent.Announce)
 		fmt.Printf("Length: %d\n", torrent.Info.Length)
-		fmt.Printf("Info Hash: %s\n", calculateInfoHash(torrent))
+		fmt.Printf("Info Hash: %s\n", bencode.CalculateInfoHash(torrent))
 		fmt.Printf("Piece Length: %d\n", torrent.Info.PieceLength)
 		fmt.Printf("Piece Hashes:\n")
-		pieces := splitPiecesIntoHashes(torrent.Info.Pieces)
+		pieces := bencode.SplitPiecesIntoHashes(torrent.Info.Pieces)
 		for _, p := range pieces {
 			fmt.Printf("%s\n", p)
 		}
@@ -109,7 +117,7 @@ func main() {
 			return
 		}
 
-		peersList, err := getPeers(torrent)
+		peersList, err := protocol.GetPeers(torrent)
 		if err != nil {
 			tracerr.PrintSourceColor(err)
 			return
@@ -129,13 +137,13 @@ func main() {
 
 		peerIpPort := os.Args[3]
 
-		conn := establishTCPConnection(peerIpPort)
+		conn := protocol.EstablishTCPConnection(peerIpPort)
 		defer conn.Close()
 
-		response, _ := sendTCPHandshake(conn, torrent)
-		handshake := destructureHandshakeResponse(response)
+		response := protocol.SendTCPHandshake(conn, torrent)
+		handshake := protocol.DestructureHandshakeResponse(response)
 
-		fmt.Printf("Peer ID: %x\n", string(handshake.peerId))
+		fmt.Printf("Peer ID: %x\n", string(handshake.PeerId))
 	} else if command == "download_piece" {
 		option := os.Args[2]
 		if option == "-o" && len(os.Args) == 6 {
@@ -153,29 +161,29 @@ func main() {
 				return
 			}
 
-			pieces := splitPiecesIntoHashes(torrent.Info.Pieces)
+			pieces := bencode.SplitPiecesIntoHashes(torrent.Info.Pieces)
 			if (pieceIndexToDownload >= len(pieces)) || (pieceIndexToDownload < 0) {
 				fmt.Println("Invalid piece index")
 				return
 			}
 
-			peersList, err := getPeers(torrent)
+			peersList, err := protocol.GetPeers(torrent)
 			if err != nil {
 				tracerr.PrintSourceColor(err)
 				return
 			}
 
 			// just use the first peer, since there's no specification
-			conn := establishTCPConnection(peersList[0])
+			conn := protocol.EstablishTCPConnection(peersList[0])
 			defer conn.Close()
 
-			response, conn := sendTCPHandshake(conn, torrent)
+			response := protocol.SendTCPHandshake(conn, torrent)
 			if (response == nil) || len(response) == 0 || (conn == nil) {
 				fmt.Println("Error sending handshake")
 				return
 			}
-			data := downloadPiece(conn, torrent, pieceIndexToDownload)
-			if generateSHA1Checksum(data) != pieces[pieceIndexToDownload] {
+			data := protocol.DownloadPiece(conn, torrent, pieceIndexToDownload)
+			if util.GenerateSHA1Checksum(data) != pieces[pieceIndexToDownload] {
 				fmt.Printf("Sha1 Checksum for Piece %d does not match\n", pieceIndexToDownload)
 				return
 			}
@@ -211,23 +219,23 @@ func main() {
 				return
 			}
 
-			peersList, err := getPeers(torrent)
+			peersList, err := protocol.GetPeers(torrent)
 			if err != nil {
 				tracerr.PrintSourceColor(err)
 				return
 			}
 
 			// just use the first peer, since there's no specification
-			conn := establishTCPConnection(peersList[0])
+			conn := protocol.EstablishTCPConnection(peersList[0])
 			defer conn.Close()
 
-			response, conn := sendTCPHandshake(conn, torrent)
+			response := protocol.SendTCPHandshake(conn, torrent)
 			if (response == nil) || len(response) == 0 || (conn == nil) {
 				fmt.Println("Error sending handshake")
 				return
 			}
 
-			data := download(conn, torrent)
+			data := protocol.Download(conn, torrent)
 			if (data == nil) || (len(data) == 0) {
 				fmt.Println("Error downloading data")
 				return
@@ -250,6 +258,67 @@ func main() {
 			return
 		} else {
 			fmt.Println("Invalid command. Usage: download -o <file_path> <torrent_file>")
+			return
+		}
+	} else if command == "download_x" {
+		option := os.Args[2]
+		if option == "-o" && len(os.Args) == 5 {
+			filePath := os.Args[3]
+			fileName := os.Args[4]
+
+			torrent, err := decodeFile(fileName)
+			if err != nil {
+				tracerr.PrintSourceColor(err)
+				return
+			}
+
+			peersList, err := protocol.GetPeers(torrent)
+			if err != nil {
+				tracerr.PrintSourceColor(err)
+				return
+			}
+
+			validPeers := protocol.InitPeers(peersList, torrent)
+			fmt.Printf("Downloading %s from %v peers\n", fileName, validPeers)
+
+			// initiatilizing ctx
+			ctx, cancel := context.WithCancel(context.Background())
+
+			sigCh := make(chan os.Signal, 1)
+			defer close(sigCh)
+
+			signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGINT)
+			go func() {
+				// wait until receiving the signal
+				<-sigCh
+				cancel()
+			}()
+
+			dl := worker.NewDownloader()
+			d := worker.NewDispatcher(dl, len(validPeers), 5) // maxWorkers equals valid peers for now
+			d.Start(ctx)
+
+			// split the file into pieces
+			piecesHash := bencode.SplitPiecesIntoHashes(torrent.Info.Pieces)
+
+			// add a job for each piece
+			for i, pieceHash := range piecesHash {
+				job := &worker.DownloadPieceJob{
+					Peers:      validPeers,
+					PieceIndex: i,
+					Torrent:    &torrent,
+					Hash:       pieceHash,
+				}
+				d.Add(job)
+			}
+
+			// start workers
+			d.Wait()
+
+			fmt.Printf("Downloaded %s to %s.\n", fileName, filePath)
+			return
+		} else {
+			fmt.Println("Invalid command. Usage: download_x -o <file_path> <torrent_file>")
 			return
 		}
 	} else {

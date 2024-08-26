@@ -1,4 +1,4 @@
-package main
+package protocol
 
 import (
 	"bytes"
@@ -7,13 +7,17 @@ import (
 	"io"
 	"net"
 	"net/http"
+
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bencode"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/torrent"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/util"
 )
 
 const MY_PEER_ID = "00112233445566778899"
 const BLOCK_LENGTH = 16384 // 16KiB, 2^14
 
-func getPeers(torrent TorrentMetadata) ([]string, error) {
-	infoHash := calculateInfoHash(torrent)
+func GetPeers(torrent torrent.TorrentMetadata) ([]string, error) {
+	infoHash := bencode.CalculateInfoHash(torrent)
 
 	url := fmt.Sprintf("%s?info_hash=%s&peer_id=%s&port=%d&uploaded=0&downloaded=0&left=92063&compact=1",
 		torrent.Announce, urlEncodeWithConversion(infoHash), "00112233445566778899", 6881)
@@ -28,8 +32,8 @@ func getPeers(torrent TorrentMetadata) ([]string, error) {
 		fmt.Println("Error reading response body:", err)
 	}
 
-	DebugLog("Response body: ", body)
-	peersRespMap, rest, err := decodeBencode(body)
+	util.DebugLog("Response body: ", body)
+	peersRespMap, rest, err := bencode.DecodeBencode(body)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +42,7 @@ func getPeers(torrent TorrentMetadata) ([]string, error) {
 		return nil, fmt.Errorf("Rest is not empty. Invalid syntax")
 	}
 
-	DebugLog("Response map", peersRespMap)
+	util.DebugLog("Response map", peersRespMap)
 
 	var peersResp PeerResponse
 	// Type assertion to convert interface{} to map[string]interface{}
@@ -68,36 +72,46 @@ func getPeers(torrent TorrentMetadata) ([]string, error) {
 	return peersList, nil
 }
 
-func destructureHandshakeResponse(response []byte) Handshake {
+func DestructureHandshakeResponse(response []byte) Handshake {
 	return Handshake{
 		length:   response[0],
 		protocol: string(response[1:20]),
 		resv:     [8]byte{},
 		info:     response[28:48],
-		peerId:   response[48:68],
+		PeerId:   response[48:68],
 	}
 }
 
-func establishTCPConnection(peerIpPort string) net.Conn {
+// net.Conn is an interface
+// net.TCPConn is a struct, that implements net.Conn
+func EstablishTCPConnection(peerIpPort string) *net.TCPConn {
 	// Establish a TCP connection
 	conn, err := net.Dial("tcp", peerIpPort)
 	if err != nil {
 		fmt.Println("Error connecting:", err)
 	}
-	return conn
+
+	// Type assert the net.Conn to *net.TCPConn
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		fmt.Println("Error: Not a TCP connection")
+		return nil
+	}
+
+	return tcpConn
 }
 
-func sendTCPHandshake(conn net.Conn, metadata TorrentMetadata) ([]byte, net.Conn) {
+func SendTCPHandshake(conn *net.TCPConn, metadata torrent.TorrentMetadata) []byte {
 	handshakeMessage := Handshake{
 		length:   byte(19),
 		protocol: "BitTorrent protocol",
 		resv:     [8]byte{},
-		info:     metadata.Info.hash(),
-		peerId:   []byte(MY_PEER_ID),
+		info:     metadata.Info.Hash(),
+		PeerId:   []byte(MY_PEER_ID),
 	}.encode()
 
 	a, err := conn.Write(handshakeMessage)
-	DebugLog("handshake message sent length: ", a)
+	util.DebugLog("handshake message sent length: ", a)
 	if err != nil {
 		fmt.Println("Error sending handshake:", err)
 	}
@@ -105,7 +119,7 @@ func sendTCPHandshake(conn net.Conn, metadata TorrentMetadata) ([]byte, net.Conn
 	response := make([]byte, 68)
 	// Read the handshake response from the server
 	n, err := conn.Read(response)
-	DebugLog("handshake response received length: ", n)
+	util.DebugLog("handshake response received length: ", n)
 	if err != nil {
 		fmt.Println("Error receiving handshake response:", err)
 	}
@@ -113,7 +127,7 @@ func sendTCPHandshake(conn net.Conn, metadata TorrentMetadata) ([]byte, net.Conn
 	// response will contain the entire protocol message
 	// peer id is the last 20 bytes
 	handshakeResponse := response[:n]
-	return handshakeResponse, conn
+	return handshakeResponse
 }
 
 func getMsgFromConn(conn net.Conn) (byte, []byte) {
@@ -123,7 +137,7 @@ func getMsgFromConn(conn net.Conn) (byte, []byte) {
 		fmt.Println("Error reading message:", err)
 	}
 	messageLength := binary.BigEndian.Uint32(buffer)
-	DebugLog("tcp message length to receive: ", messageLength)
+	util.DebugLog("tcp message length to receive: ", messageLength)
 
 	if messageLength == 0 {
 		fmt.Println("Connection closed by peer")
@@ -138,6 +152,24 @@ func getMsgFromConn(conn net.Conn) (byte, []byte) {
 	id := buffer[0]
 	content := buffer[1:]
 	return id, content
+}
+
+func InitPeers(peersList []string, torrent torrent.TorrentMetadata) []Peer {
+	var peers []Peer
+	for _, peer := range peersList {
+		conn := EstablishTCPConnection(peer)
+
+		response := SendTCPHandshake(conn, torrent)
+
+		if (response != nil) && len(response) != -1 && (conn != nil) {
+			peers = append(peers, Peer{
+				Conn: conn, // needs to be closed later on
+				Id:   fmt.Sprintf("%x", DestructureHandshakeResponse(response).PeerId),
+			})
+		}
+	}
+
+	return peers
 }
 
 func downloadInit(conn net.Conn) net.Conn {
@@ -159,7 +191,7 @@ func downloadInit(conn net.Conn) net.Conn {
 		return nil
 	}
 
-	DebugLog("Sent interested message")
+	util.DebugLog("Sent interested message")
 
 	id, _ = getMsgFromConn(conn)
 	if id != 1 {
@@ -170,13 +202,15 @@ func downloadInit(conn net.Conn) net.Conn {
 	return conn
 }
 
-func requestPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byte {
+func requestPiece(conn net.Conn, torrentMetadata *torrent.TorrentMetadata, pieceIndex int) []byte {
 	var pieceLengthToRetrive int
-	if (pieceIndex == torrent.Info.Length/torrent.Info.PieceLength) && (torrent.Info.Length%torrent.Info.PieceLength != 0) {
+	length := torrentMetadata.Info.Length
+	pieceLength := torrentMetadata.Info.PieceLength
+	if (pieceIndex == length/pieceLength) && (length%pieceLength != 0) {
 		// last piece
-		pieceLengthToRetrive = torrent.Info.Length % torrent.Info.PieceLength
+		pieceLengthToRetrive = length % pieceLength
 	} else {
-		pieceLengthToRetrive = torrent.Info.PieceLength
+		pieceLengthToRetrive = pieceLength
 	}
 
 	var data []byte
@@ -217,7 +251,7 @@ func requestPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byte
 	return data
 }
 
-func downloadPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byte {
+func DownloadPiece(conn net.Conn, torrent torrent.TorrentMetadata, pieceIndex int) []byte {
 	// first check pieceIndex validity
 	if pieceIndex > (torrent.Info.Length/torrent.Info.PieceLength) || (pieceIndex < 0) {
 		fmt.Println("Invalid piece index")
@@ -226,18 +260,18 @@ func downloadPiece(conn net.Conn, torrent TorrentMetadata, pieceIndex int) []byt
 
 	conn = downloadInit(conn)
 
-	return requestPiece(conn, torrent, pieceIndex)
+	return requestPiece(conn, &torrent, pieceIndex)
 }
 
-func download(conn net.Conn, torrent TorrentMetadata) []byte {
-	piecesHash := splitPiecesIntoHashes(torrent.Info.Pieces)
+func Download(conn net.Conn, torrent torrent.TorrentMetadata) []byte {
+	piecesHash := bencode.SplitPiecesIntoHashes(torrent.Info.Pieces)
 
 	data := make([]byte, 0)
 
 	conn = downloadInit(conn)
 	for i := 0; i < len(piecesHash); i++ {
-		piece := requestPiece(conn, torrent, i)
-		if generateSHA1Checksum(piece) != piecesHash[i] {
+		piece := requestPiece(conn, &torrent, i)
+		if util.GenerateSHA1Checksum(piece) != piecesHash[i] {
 			fmt.Printf("Sha1 Checksum for Piece %d does not match\n", i)
 			return nil
 		}

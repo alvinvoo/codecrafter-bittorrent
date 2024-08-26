@@ -1,18 +1,18 @@
-package main
+package bencode
 
 import (
 	// Uncomment this line to pass the first stage
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
-	"log"
-	"os"
 	"strconv"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/ztrue/tracerr"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/torrent"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/util"
 )
 
 func decodeString(bencodedString []byte) ([]byte, []byte, error) {
@@ -118,7 +118,7 @@ func decodeList(bencodedString []byte) ([]interface{}, []byte, error) {
 
 	retLists := make([]interface{}, 0)
 	for len(lists) > 0 {
-		a, r, err := decodeBencode(lists)
+		a, r, err := DecodeBencode(lists)
 
 		if err != nil {
 			return []interface{}{}, nil, tracerr.Wrap(err)
@@ -151,7 +151,7 @@ func decodeDictionary(bencodedString []byte) (map[string]interface{}, []byte, er
 		}
 
 		// need to decode twice to get key-value pair
-		v, r, err := decodeBencode(rk)
+		v, r, err := DecodeBencode(rk)
 
 		if err != nil {
 			return map[string]interface{}{}, nil, tracerr.Wrap(err)
@@ -165,7 +165,7 @@ func decodeDictionary(bencodedString []byte) (map[string]interface{}, []byte, er
 	return retDict, rest, nil
 }
 
-func decodeBencode(bencodedString []byte) (interface{}, []byte, error) {
+func DecodeBencode(bencodedString []byte) (interface{}, []byte, error) {
 	if unicode.IsDigit(rune(bencodedString[0])) { // bencodedString[0] returns a byte (which shows up as Unicode when printed)
 		s, r, err := decodeString(bencodedString)
 		if utf8.Valid(s) {
@@ -183,34 +183,22 @@ func decodeBencode(bencodedString []byte) (interface{}, []byte, error) {
 	}
 }
 
-func encodeInfoDict(info InfoDict) string {
-	return fmt.Sprintf("d6:lengthi%de4:name%d:%s12:piece lengthi%de6:pieces%d:%se",
-		info.Length, len(info.Name), info.Name, info.PieceLength, len(info.Pieces), info.Pieces)
-}
-
 func generateSHA1Checksum(data []byte) string {
 	h := sha1.New()
 	h.Write(data)
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func calculateInfoHash(metadata TorrentMetadata) string {
-	encodedInfoDict := encodeInfoDict(metadata.Info)
-	return generateSHA1Checksum([]byte(encodedInfoDict))
+func CalculateInfoHash(metadata torrent.TorrentMetadata) string {
+	encodedInfoDict := torrent.EncodeInfoDict(metadata.Info)
+	return util.GenerateSHA1Checksum([]byte(encodedInfoDict))
 }
 
-func splitPiecesIntoHashes(pieces []byte) []string {
+func SplitPiecesIntoHashes(pieces []byte) []string {
 	hashes := make([]string, 0)
 	for i := 0; i < len(pieces); i += 20 {
 		// the `pieces` here are more accurately called `piece hashes`
 		hashes = append(hashes, hex.EncodeToString(pieces[i:i+20]))
 	}
 	return hashes
-}
-
-// Debug logger function
-func DebugLog(title string, message ...interface{}) {
-	if os.Getenv("DEBUG") == "true" {
-		log.Println("DEBUG:", title, message)
-	}
 }
