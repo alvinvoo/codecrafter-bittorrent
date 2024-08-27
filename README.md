@@ -1,3 +1,17 @@
+# BitTorrent basic
+
+## TODO
+- when downloading
+  - implement a better way to select a peer
+  - handle failure gracefully
+  - handle retries
+- handle resuming
+  - file should be created _first_ on disk and being written to periodically
+  - so that it could be resumed later
+- unfinished file validation
+
+## Below are codecrafters content
+
 [![progress-banner](https://backend.codecrafters.io/progress/bittorrent/39656058-0457-4d72-b3eb-579464194444)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
 
 This is a starting point for Go solutions to the

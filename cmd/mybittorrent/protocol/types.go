@@ -49,7 +49,8 @@ func (peerMessage PeerMessage) encode() []byte {
 }
 
 type Peer struct {
-	Conn  *net.TCPConn // need to close at the end
+	Conn  *net.TCPConn // need to close at the very end
 	Id    string
 	Retry int
+	Init  bool
 }

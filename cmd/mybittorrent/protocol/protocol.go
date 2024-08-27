@@ -172,12 +172,11 @@ func InitPeers(peersList []string, torrent torrent.TorrentMetadata) []Peer {
 	return peers
 }
 
-func downloadInit(conn net.Conn) net.Conn {
+func DownloadInit(conn *net.TCPConn) error {
 	// wait for the first message from the peer
 	id, _ := getMsgFromConn(conn)
 	if id != 5 {
-		fmt.Println("Expected bitfield message, got something else")
-		return nil
+		return fmt.Errorf("Expected bitfield message, got something else")
 	}
 
 	// show interested
@@ -187,22 +186,20 @@ func downloadInit(conn net.Conn) net.Conn {
 	}.encode()
 	_, err := conn.Write(interestedMessage)
 	if err != nil {
-		fmt.Println("Error sending interested message:", err)
-		return nil
+		return fmt.Errorf("Error sending interested message: %s", err.Error())
 	}
 
 	util.DebugLog("Sent interested message")
 
 	id, _ = getMsgFromConn(conn)
 	if id != 1 {
-		fmt.Println("Expected unchoke message, got something else")
-		return nil
+		return fmt.Errorf("Expected unchoke message, got something else")
 	}
 
-	return conn
+	return nil
 }
 
-func requestPiece(conn net.Conn, torrentMetadata *torrent.TorrentMetadata, pieceIndex int) []byte {
+func RequestPiece(conn net.Conn, torrentMetadata *torrent.TorrentMetadata, pieceIndex int) []byte {
 	var pieceLengthToRetrive int
 	length := torrentMetadata.Info.Length
 	pieceLength := torrentMetadata.Info.PieceLength
@@ -251,26 +248,35 @@ func requestPiece(conn net.Conn, torrentMetadata *torrent.TorrentMetadata, piece
 	return data
 }
 
-func DownloadPiece(conn net.Conn, torrent torrent.TorrentMetadata, pieceIndex int) []byte {
+func DownloadPiece(conn *net.TCPConn, torrent torrent.TorrentMetadata, pieceIndex int) []byte {
 	// first check pieceIndex validity
 	if pieceIndex > (torrent.Info.Length/torrent.Info.PieceLength) || (pieceIndex < 0) {
 		fmt.Println("Invalid piece index")
 		return nil
 	}
 
-	conn = downloadInit(conn)
+	err := DownloadInit(conn)
+	if err != nil {
+		fmt.Println("Error initializing download:", err)
+		return nil
+	}
 
-	return requestPiece(conn, &torrent, pieceIndex)
+	return RequestPiece(conn, &torrent, pieceIndex)
 }
 
-func Download(conn net.Conn, torrent torrent.TorrentMetadata) []byte {
+func Download(conn *net.TCPConn, torrent torrent.TorrentMetadata) []byte {
 	piecesHash := bencode.SplitPiecesIntoHashes(torrent.Info.Pieces)
 
 	data := make([]byte, 0)
 
-	conn = downloadInit(conn)
+	err := DownloadInit(conn)
+	if err != nil {
+		fmt.Println("Error initializing download:", err)
+		return nil
+	}
+
 	for i := 0; i < len(piecesHash); i++ {
-		piece := requestPiece(conn, &torrent, i)
+		piece := RequestPiece(conn, &torrent, i)
 		if util.GenerateSHA1Checksum(piece) != piecesHash[i] {
 			fmt.Printf("Sha1 Checksum for Piece %d does not match\n", i)
 			return nil

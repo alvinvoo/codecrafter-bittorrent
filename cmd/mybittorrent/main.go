@@ -294,8 +294,9 @@ func main() {
 				cancel()
 			}()
 
-			dl := worker.NewDownloader()
+			dl := worker.NewDownloader(validPeers, torrent.Info.Length)
 			d := worker.NewDispatcher(dl, len(validPeers), 5) // maxWorkers equals valid peers for now
+			// start the dispatcher
 			d.Start(ctx)
 
 			// split the file into pieces
@@ -304,7 +305,6 @@ func main() {
 			// add a job for each piece
 			for i, pieceHash := range piecesHash {
 				job := &worker.DownloadPieceJob{
-					Peers:      validPeers,
 					PieceIndex: i,
 					Torrent:    &torrent,
 					Hash:       pieceHash,
@@ -312,8 +312,24 @@ func main() {
 				d.Add(job)
 			}
 
-			// start workers
+			// wait for all the jobs to finish
 			d.Wait()
+
+			// close any open connections
+			dl.CloseConnections()
+
+			file, err := os.Create(filePath)
+			if err != nil {
+				fmt.Println("Error creating file:", err)
+				return
+			}
+			defer file.Close()
+
+			_, err = file.Write(dl.FullData)
+			if err != nil {
+				fmt.Println("Error writing to file:", err)
+				return
+			}
 
 			fmt.Printf("Downloaded %s to %s.\n", fileName, filePath)
 			return

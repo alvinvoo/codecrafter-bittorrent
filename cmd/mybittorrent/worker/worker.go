@@ -51,12 +51,19 @@ func (d *Dispatcher) Add(job Job) {
 	d.jobBuffer <- job
 }
 
-func (d *Dispatcher) stop() {
+func (d *Dispatcher) Stop() {
 	d.wg.Done()
 }
 
 func (d *Dispatcher) loop(ctx context.Context) {
 	var wg sync.WaitGroup
+
+	// IMPT: Monitor completion of all jobs
+	go func() {
+		wg.Wait()
+		d.Stop() // Signal the dispatcher to stop when all jobs are done
+	}()
+
 Loop:
 	for {
 		select {
@@ -78,5 +85,4 @@ Loop:
 			}(job)
 		}
 	}
-	d.stop()
 }

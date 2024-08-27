@@ -2,17 +2,30 @@ package worker
 
 import (
 	"fmt"
-	"math/rand"
-	"time"
+	"sync"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/protocol"
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/torrent"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/util"
 )
 
-type Downloader struct{}
+type Downloader struct {
+	Peers    []protocol.Peer
+	FullData []byte
+	mu       sync.Mutex
+}
 
-func NewDownloader() *Downloader {
-	return &Downloader{}
+func NewDownloader(peers []protocol.Peer, length int) *Downloader {
+	return &Downloader{
+		Peers:    peers,
+		FullData: make([]byte, length),
+	}
+}
+
+func (d *Downloader) CloseConnections() {
+	for _, p := range d.Peers {
+		p.Conn.Close()
+	}
 }
 
 func (d *Downloader) Work(j Job) {
@@ -22,15 +35,42 @@ func (d *Downloader) Work(j Job) {
 		return
 	}
 
-	t := time.NewTimer(time.Duration(rand.Intn(5)) * time.Second)
-	defer t.Stop()
-	<-t.C
-	fmt.Printf("Downloaded piece %d with length %d of %d \n", dj.PieceIndex, dj.Torrent.Info.Length, dj.Torrent.Info.PieceLength)
+	// first assign a peer to download the piece
+	// TODO: implement a better way to select a peer
+	p := d.Peers[dj.PieceIndex%len(d.Peers)]
+
+	// initialize peer if not already
+	if !p.Init {
+		err := protocol.DownloadInit(p.Conn)
+		if err != nil {
+			fmt.Println("Failed to initialize peer:", err)
+			return
+		}
+	}
+
+	// request the piece
+	piece := protocol.RequestPiece(p.Conn, dj.Torrent, dj.PieceIndex)
+
+	// seems like redundant
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	copiedLen := copy(d.FullData[dj.PieceIndex*dj.Torrent.Info.PieceLength:], piece)
+	util.DebugLog(fmt.Sprintf("Copied %d bytes of piece %d", copiedLen, dj.PieceIndex))
+	if copiedLen != len(piece) {
+		fmt.Println("Failed to copy the piece")
+		// TODO: handle failure gracefully
+		dj.Failed = true
+		return
+	}
+
+	dj.completed = true
 }
 
 type DownloadPieceJob struct {
-	Peers      []protocol.Peer // a peer list to rotate peers
 	PieceIndex int
 	Torrent    *torrent.TorrentMetadata
 	Hash       string
+	completed  bool
+	Failed     bool
 }
