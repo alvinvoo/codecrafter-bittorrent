@@ -20,7 +20,7 @@ func GetPeers(torrent torrent.TorrentMetadata) ([]string, error) {
 	infoHash := bencode.CalculateInfoHash(torrent)
 
 	url := fmt.Sprintf("%s?info_hash=%s&peer_id=%s&port=%d&uploaded=0&downloaded=0&left=92063&compact=1",
-		torrent.Announce, urlEncodeWithConversion(infoHash), "00112233445566778899", 6881)
+		torrent.Announce, UrlEncodeWithConversion(infoHash), "00112233445566778899", 6881)
 
 	response, err := http.Get(url)
 	if err != nil {
@@ -64,7 +64,7 @@ func GetPeers(torrent torrent.TorrentMetadata) ([]string, error) {
 		}
 	}
 
-	peersList, err := decodePeers(peersResp.Peers)
+	peersList, err := DecodePeers(peersResp.Peers)
 	if err != nil {
 		return nil, err
 	}
@@ -101,12 +101,20 @@ func EstablishTCPConnection(peerIpPort string) *net.TCPConn {
 	return tcpConn
 }
 
-func SendTCPHandshake(conn *net.TCPConn, metadata torrent.TorrentMetadata) []byte {
+func SendTCPHandshake(conn *net.TCPConn, infoHash []byte, isExtension bool) []byte {
+	resv := [8]byte{}
+	if isExtension {
+		// set 20th bit from the right to zero for EXTENSION
+		resv[5] = 0x10
+	}
+
+	fmt.Println("info hash: " + string(infoHash))
+
 	handshakeMessage := Handshake{
 		length:   byte(19),
 		protocol: "BitTorrent protocol",
-		resv:     [8]byte{},
-		info:     metadata.Info.Hash(),
+		resv:     resv,
+		info:     infoHash,
 		PeerId:   []byte(MY_PEER_ID),
 	}.encode()
 
@@ -159,7 +167,7 @@ func InitPeers(peersList []string, torrent torrent.TorrentMetadata) []Peer {
 	for _, peer := range peersList {
 		conn := EstablishTCPConnection(peer)
 
-		response := SendTCPHandshake(conn, torrent)
+		response := SendTCPHandshake(conn, torrent.Info.Hash(), false)
 
 		if (response != nil) && len(response) != -1 && (conn != nil) {
 			peers = append(peers, Peer{

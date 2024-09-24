@@ -5,16 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/ztrue/tracerr"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bencode"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/extension"
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/protocol"
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/torrent"
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/util"
@@ -142,7 +141,7 @@ func main() {
 		conn := protocol.EstablishTCPConnection(peerIpPort)
 		defer conn.Close()
 
-		response := protocol.SendTCPHandshake(conn, torrent)
+		response := protocol.SendTCPHandshake(conn, torrent.Info.Hash(), false)
 		handshake := protocol.DestructureHandshakeResponse(response)
 
 		fmt.Printf("Peer ID: %x\n", string(handshake.PeerId))
@@ -179,7 +178,7 @@ func main() {
 			conn := protocol.EstablishTCPConnection(peersList[0])
 			defer conn.Close()
 
-			response := protocol.SendTCPHandshake(conn, torrent)
+			response := protocol.SendTCPHandshake(conn, torrent.Info.Hash(), false)
 			if (response == nil) || len(response) == 0 || (conn == nil) {
 				fmt.Println("Error sending handshake")
 				return
@@ -233,7 +232,7 @@ func main() {
 			conn := protocol.EstablishTCPConnection(peersList[0])
 			defer conn.Close()
 
-			response := protocol.SendTCPHandshake(conn, torrent)
+			response := protocol.SendTCPHandshake(conn, torrent.Info.Hash(), false)
 			if (response == nil) || len(response) == 0 || (conn == nil) {
 				fmt.Println("Error sending handshake")
 				return
@@ -345,22 +344,40 @@ func main() {
 	} else if command == "magnet_parse" {
 		magnetLink := os.Args[2]
 
-		if afterStr, found := strings.CutPrefix(magnetLink, "magnet:?xt=urn:btih:"); found {
-			parts := strings.Split(afterStr, "&")
-
-			urls := strings.Split(parts[2], "=")
-			decodedURL, err := url.QueryUnescape(urls[1])
-			if err != nil {
-				fmt.Println("Error decoding URL:", err)
-				return
-			}
-
-			fmt.Println("Tracker URL:", decodedURL)
-			fmt.Println("Info Hash:", parts[0])
-		} else {
-			fmt.Println("Invalid magnet link")
+		m := extension.NewMagnet(magnetLink)
+		err := m.Parse()
+		if err != nil {
+			fmt.Println("Error parsing magnet link:", err)
 			return
 		}
+
+		fmt.Println("Tracker URL:", m.URL)
+		fmt.Println("Info Hash:", m.InfoHash)
+	} else if command == "magnet_handshake" {
+		magnetLink := os.Args[2]
+
+		m := extension.NewMagnet(magnetLink)
+		err := m.Parse()
+		if err != nil {
+			fmt.Println("Error parsing magnet link:", err)
+			return
+		}
+
+		peers, err := m.GetPeers()
+		if err != nil {
+			fmt.Println("Error getting peers:", err)
+			return
+		}
+
+		fmt.Println("Found peers: ", peers)
+
+		conn := protocol.EstablishTCPConnection(peers[0])
+		defer conn.Close()
+
+		response := protocol.SendTCPHandshake(conn, []byte(m.InfoHashDecoded), false)
+		handshake := protocol.DestructureHandshakeResponse(response)
+
+		fmt.Printf("Peer ID: %x\n", string(handshake.PeerId))
 
 	} else {
 		fmt.Println("Unknown command: " + command)

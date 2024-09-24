@@ -15,7 +15,7 @@ func isUnreserved(b byte) bool {
 		b == '.' || b == '~'
 }
 
-func urlEncodeWithConversion(input string) string {
+func UrlEncodeWithConversion(input string) string {
 	// Decode the hex string into bytes
 	data, err := hex.DecodeString(input)
 	if err != nil {
@@ -52,7 +52,7 @@ func decodePeer(peer []byte) (string, error) {
 	return fmt.Sprintf("%s:%d", ip, port), nil
 }
 
-func decodePeers(peers []byte) ([]string, error) {
+func DecodePeers(peers []byte) ([]string, error) {
 	if (len(peers) % 6) != 0 {
 		return nil, fmt.Errorf("invalid peers length")
 	}
