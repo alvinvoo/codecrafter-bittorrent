@@ -209,7 +209,7 @@ func main() {
 			fmt.Println("Invalid command. Usage: download_file -o <file_path> <torrent_file> <piece_index>")
 			return
 		}
-	} else if command == "download_old" {
+	} else if command == "download" {
 		option := os.Args[2]
 		if option == "-o" && len(os.Args) == 5 {
 			filePath := os.Args[3]
@@ -226,6 +226,8 @@ func main() {
 				tracerr.PrintSourceColor(err)
 				return
 			}
+
+			fmt.Println("Downloading", fileName, "from", peersList)
 
 			// just use the first peer, since there's no specification
 			conn := protocol.EstablishTCPConnection(peersList[0])
@@ -262,7 +264,7 @@ func main() {
 			fmt.Println("Invalid command. Usage: download -o <file_path> <torrent_file>")
 			return
 		}
-	} else if command == "download" {
+	} else if command == "download_x" {
 		option := os.Args[2]
 		if option == "-o" && len(os.Args) == 5 {
 			filePath := os.Args[3]
