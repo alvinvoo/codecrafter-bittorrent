@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/ztrue/tracerr"
@@ -338,6 +340,26 @@ func main() {
 			fmt.Println("Invalid command. Usage: download_x -o <file_path> <torrent_file>")
 			return
 		}
+	} else if command == "magnet_parse" {
+		magnetLink := os.Args[2]
+
+		if afterStr, found := strings.CutPrefix(magnetLink, "magnet:?xt=urn:btih:"); found {
+			parts := strings.Split(afterStr, "&")
+
+			urls := strings.Split(parts[2], "=")
+			decodedURL, err := url.QueryUnescape(urls[1])
+			if err != nil {
+				fmt.Println("Error decoding URL:", err)
+				return
+			}
+
+			fmt.Println("Tracker URL:", decodedURL)
+			fmt.Println("Info Hash:", parts[0])
+		} else {
+			fmt.Println("Invalid magnet link")
+			return
+		}
+
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
