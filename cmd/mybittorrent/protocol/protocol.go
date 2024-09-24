@@ -108,8 +108,6 @@ func SendTCPHandshake(conn *net.TCPConn, infoHash []byte, isExtension bool) []by
 		resv[5] = 0x10
 	}
 
-	fmt.Println("info hash: " + string(infoHash))
-
 	handshakeMessage := Handshake{
 		length:   byte(19),
 		protocol: "BitTorrent protocol",
