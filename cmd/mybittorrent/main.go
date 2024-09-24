@@ -228,7 +228,7 @@ func main() {
 			}
 
 			// just use the first peer, since there's no specification
-			conn := protocol.EstablishTCPConnection(peersList[1])
+			conn := protocol.EstablishTCPConnection(peersList[0])
 			defer conn.Close()
 
 			response := protocol.SendTCPHandshake(conn, torrent)
