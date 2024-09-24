@@ -209,7 +209,7 @@ func main() {
 			fmt.Println("Invalid command. Usage: download_file -o <file_path> <torrent_file> <piece_index>")
 			return
 		}
-	} else if command == "download" {
+	} else if command == "download_old" {
 		option := os.Args[2]
 		if option == "-o" && len(os.Args) == 5 {
 			filePath := os.Args[3]
@@ -262,7 +262,7 @@ func main() {
 			fmt.Println("Invalid command. Usage: download -o <file_path> <torrent_file>")
 			return
 		}
-	} else if command == "download_x" {
+	} else if command == "download" {
 		option := os.Args[2]
 		if option == "-o" && len(os.Args) == 5 {
 			filePath := os.Args[3]
