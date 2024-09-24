@@ -296,8 +296,6 @@ func main() {
 
 			dl := worker.NewDownloader(validPeers, torrent.Info.Length)
 			d := worker.NewDispatcher(dl, len(validPeers), 5) // maxWorkers equals valid peers for now
-			// start the dispatcher
-			d.Start(ctx)
 
 			// split the file into pieces
 			piecesHash := bencode.SplitPiecesIntoHashes(torrent.Info.Pieces)
@@ -311,6 +309,9 @@ func main() {
 				}
 				d.Add(job)
 			}
+
+			// start the dispatcher
+			d.Start(ctx)
 
 			// wait for all the jobs to finish
 			d.Wait()

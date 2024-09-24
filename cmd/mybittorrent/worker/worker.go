@@ -3,6 +3,8 @@ package worker
 import (
 	"context"
 	"sync"
+
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/util"
 )
 
 // Job represents a interface of job that can be enqueued into a dispatcher.
@@ -36,6 +38,7 @@ func NewDispatcher(worker Worker, maxWorkers int, buffers int) *Dispatcher {
 // This dispatcher will stops when it receive a value from `ctx.Done`.
 func (d *Dispatcher) Start(ctx context.Context) {
 	d.wg.Add(1)
+	util.DebugLog("starting dispatcher loop")
 	go d.loop(ctx)
 }
 
@@ -60,10 +63,17 @@ func (d *Dispatcher) loop(ctx context.Context) {
 
 	// IMPT: Monitor completion of all jobs
 	go func() {
+		util.DebugLog("monitoring jobs")
 		wg.Wait()
+		util.DebugLog("stopping loop")
 		d.Stop() // Signal the dispatcher to stop when all jobs are done
 	}()
 
+	// the for-loop will run first if there's blocking operations
+	// only when it is unblocked or have waiting periods, the go routines will run
+	// but in theory, go routines are supposed to run concurrently
+	// so to avoid any potential race conditions, the wait group actually needs to be incremented
+	// even before this function
 Loop:
 	for {
 		select {
@@ -73,6 +83,7 @@ Loop:
 			break Loop // need to specify a label to break the `for` loop; else only breaking `select` loop
 		case job := <-d.jobBuffer:
 			// Increment the waitgroup
+			util.DebugLog("incrementing job waitgroup")
 			wg.Add(1)
 			// Decrement a semaphore count
 			// Will block if semaphore channel buffer is full
