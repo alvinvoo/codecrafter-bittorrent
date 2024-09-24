@@ -374,7 +374,7 @@ func main() {
 		conn := protocol.EstablishTCPConnection(peers[0])
 		defer conn.Close()
 
-		response := protocol.SendTCPHandshake(conn, []byte(m.InfoHashDecoded), false)
+		response := protocol.SendTCPHandshake(conn, []byte(m.InfoHashDecoded), true)
 		handshake := protocol.DestructureHandshakeResponse(response)
 
 		fmt.Printf("Peer ID: %x\n", string(handshake.PeerId))
